@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --navy: #003d5c;
+  --violet: #594e90;
+  --pink: #bc4c96;
+  --coral: #ff5f66;
+  --amber: #ffa600;
+}
+
+body {
+  @apply bg-paper text-ink font-sans antialiased;
+}
+
+button,
+input,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+button {
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+button:active {
+  transform: translateY(1px);
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+:focus-visible {
+  outline: 2px solid rgba(89, 78, 144, 0.7);
+  outline-offset: 2px;
+}
+.field {
+  @apply w-full rounded-lg border border-line bg-white px-3 py-2.5 text-base transition-colors;
+}
+.field:focus {
+  @apply border-violet;
+  box-shadow: 0 0 0 3px rgba(89, 78, 144, 0.1);
+  outline: none;
+}
+.panel {
+  @apply rounded-xl border border-line bg-card shadow-panel;
+}
+.eyebrow {
+  @apply text-xs font-medium tracking-wide text-mute;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  @page { size: A4; margin: 14mm; }
+  html, body { background: #fff !important; color: #18181b !important; }
+  body * { visibility: hidden !important; }
+  #print-report, #print-report * { visibility: visible !important; }
+  #print-report { display: block !important; position: absolute !important; inset: 0 auto auto 0 !important; width: 100% !important; background: #fff !important; color: #18181b !important; font-family: Arial, sans-serif !important; font-size: 9pt !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  #print-report .report-page { width: 100%; }
+  #print-report .report-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12pt; border-bottom: 1px solid #d4d4d8; }
+  #print-report .report-header img { width: 110pt; height: 48pt; object-fit: contain; object-position: left center; }
+  #print-report .report-header div { text-align: right; color: #71717a; font-size: 8pt; }
+  #print-report .report-header strong { display: block; margin-top: 3pt; color: #18181b; font-size: 10pt; }
+  #print-report h1 { margin: 18pt 0 12pt; font-size: 21pt; letter-spacing: -.4pt; }
+  #print-report .report-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8pt; }
+  #print-report .report-summary div { padding: 10pt; border: 1px solid #e4e4e7; border-radius: 7pt; background: #f8fafc !important; }
+  #print-report .report-summary span { display: block; color: #71717a; font-size: 8pt; }
+  #print-report .report-summary strong { display: block; margin-top: 5pt; font-size: 12pt; font-variant-numeric: tabular-nums; }
+  #print-report .report-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 14pt; margin-top: 16pt; }
+  #print-report .report-category { min-width: 0; padding: 11pt; border: 1px solid #e4e4e7; border-radius: 7pt; break-inside: avoid; }
+  #print-report .report-category h2, #print-report .report-transactions h2 { margin: 0 0 9pt; font-size: 11pt; }
+  #print-report .report-chart { display: block; width: 100%; height: 12pt; overflow: visible; }
+  #print-report .report-category ul { display: grid; gap: 5pt; margin: 10pt 0 0; padding: 0; list-style: none; }
+  #print-report .report-category li, #print-report .report-category li span { display: flex; align-items: center; }
+  #print-report .report-category li { justify-content: space-between; gap: 8pt; font-size: 8pt; }
+  #print-report .report-category li i { display: inline-block; width: 6pt; height: 6pt; margin-right: 5pt; border-radius: 50%; }
+  #print-report .report-category li strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  #print-report .report-category li small { margin-left: 4pt; color: #71717a; font-weight: normal; }
+  #print-report .report-empty { color: #71717a; font-size: 8pt; }
+  #print-report .report-transactions { margin-top: 18pt; }
+  #print-report table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+  #print-report th { background: #f1f5f9 !important; color: #52525b; font-weight: 600; text-align: left; }
+  #print-report th, #print-report td { padding: 6pt 5pt; border-bottom: 1px solid #e4e4e7; }
+  #print-report td:last-child, #print-report th:last-child { text-align: right; white-space: nowrap; }
+  #print-report footer { margin-top: 14pt; padding-top: 8pt; border-top: 1px solid #e4e4e7; color: #71717a; font-size: 7pt; }
+}
