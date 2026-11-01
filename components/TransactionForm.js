@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { CATS, todayISO } from '../lib/utils';
-import { ArrowDownRight, ArrowUpRight, X } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Check, PencilLine, Plus, Tag, Trash2, X } from 'lucide-react';
 
 const formatBRLInput = (value) => {
   const digits = String(value ?? '').replace(/\D/g, '');
@@ -10,10 +10,15 @@ const formatBRLInput = (value) => {
   return amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-export default function TransactionForm({ initial, onSave, onDelete, onClose }) {
+export default function TransactionForm({ initial, categories = CATS, categoryUsage = {}, onAddCategory, onDeleteCategory, onRenameCategory, onSave, onDelete, onClose }) {
   const editing = Boolean(initial?.id);
-  const [f, setF] = useState(() => initial ? { ...initial, amount: formatBRLInput(Math.round(Number(initial.amount) * 100)) } : { type: 'despesa', description: '', amount: '', date: todayISO(), category: 'Mercado', paid: true, fixed: false });
+  const [f, setF] = useState(() => initial ? { ...initial, amount: formatBRLInput(Math.round(Number(initial.amount) * 100)) } : { type: 'despesa', description: '', amount: '', date: todayISO(), category: categories.despesa?.[0] || CATS.despesa[0], paid: true, fixed: false });
   const [err, setErr] = useState('');
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [categoryError, setCategoryError] = useState('');
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [categoryDraft, setCategoryDraft] = useState('');
   const descriptionRef = useRef(null);
   const amountRef = useRef(null);
   useEffect(() => {
@@ -39,8 +44,37 @@ export default function TransactionForm({ initial, onSave, onDelete, onClose }) 
     if (window.matchMedia('(min-width: 640px)').matches) descriptionRef.current?.focus();
   }, []);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
-  const setType = (t) => setF((s) => ({ ...s, type: t, category: CATS[t][0] }));
+  const currentCategories = categories[f.type] || CATS[f.type];
+  const setType = (t) => setF((s) => ({ ...s, type: t, category: categories[t]?.[0] || CATS[t][0] }));
   const setAmount = (value) => set('amount', formatBRLInput(value));
+  const addCategory = () => {
+    const name = newCategoryName.trim().replace(/\s+/g, ' ');
+    if (!name) return setCategoryError('Digite um nome para a categoria.');
+    if (currentCategories.some((item) => item.toLocaleLowerCase('pt-BR') === name.toLocaleLowerCase('pt-BR'))) return setCategoryError('Essa categoria já existe.');
+    onAddCategory(f.type, name);
+    set('category', name);
+    setNewCategoryName('');
+    setCategoryError('');
+  };
+  const saveCategoryEdit = (oldName) => {
+    const name = categoryDraft.trim().replace(/\s+/g, ' ');
+    if (!name) return setCategoryError('O nome da categoria não pode ficar vazio.');
+    if (currentCategories.some((item) => item !== oldName && item.toLocaleLowerCase('pt-BR') === name.toLocaleLowerCase('pt-BR'))) return setCategoryError('Essa categoria já existe.');
+    if (name !== oldName) {
+      onRenameCategory(f.type, oldName, name);
+      if (f.category === oldName) set('category', name);
+    }
+    setEditingCategory(null);
+    setCategoryDraft('');
+    setCategoryError('');
+  };
+  const removeCategory = (name) => {
+    if ((categoryUsage[f.type]?.[name] || 0) > 0) return setCategoryError('Reclassifique os lançamentos que usam esta categoria antes de removê-la.');
+    if (currentCategories.length <= 1) return setCategoryError('Mantenha pelo menos uma categoria.');
+    onDeleteCategory(f.type, name);
+    if (f.category === name) set('category', currentCategories.find((item) => item !== name));
+    setCategoryError('');
+  };
   const submit = (e) => {
     e.preventDefault();
     const amount = Number(String(f.amount).replace(/\./g, '').replace(',', '.'));
@@ -67,7 +101,20 @@ export default function TransactionForm({ initial, onSave, onDelete, onClose }) 
             <label className="block scroll-mb-24 text-sm font-semibold">{f.type === 'receita' ? 'Valor da receita (R$)' : 'Valor da despesa (R$)'}<input ref={amountRef} enterKeyHint="done" onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} className="field num mt-1.5 font-normal" inputMode="numeric" autoComplete="off" value={f.amount} onChange={(e) => { setAmount(e.target.value); if (err) setErr(''); }} placeholder="0,00" /></label>
             <label className="block text-sm font-semibold">Data<input type="date" className="field mt-1.5 font-normal" value={f.date} onChange={(e) => set('date', e.target.value)} required /></label>
           </div>
-          <label className="block text-sm font-semibold">Categoria<select className="field mt-1.5 font-normal" value={f.category} onChange={(e) => set('category', e.target.value)}>{CATS[f.type].map((c) => <option key={c}>{c}</option>)}</select></label>
+          <div>
+            <div className="flex items-end gap-2">
+              <label className="min-w-0 flex-1 text-sm font-semibold">Categoria<select className="field mt-1.5 font-normal" value={f.category} onChange={(e) => set('category', e.target.value)}>{currentCategories.map((category) => <option key={category}>{category}</option>)}</select></label>
+              <button type="button" onClick={() => { setCategoryManagerOpen((open) => !open); setCategoryError(''); }} aria-expanded={categoryManagerOpen} className="mb-px flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-medium text-mute transition-colors hover:bg-paper"><Tag className="h-4 w-4" /> Gerenciar</button>
+            </div>
+            {categoryManagerOpen && <section className="mt-3 rounded-lg border border-line bg-paper/60 p-3" aria-label={`Gerenciar categorias de ${f.type}`}>
+              <div><p className="text-sm font-semibold">Categorias de {f.type === 'receita' ? 'receita' : 'despesa'}</p><p className="mt-0.5 text-xs text-mute">Crie, renomeie ou remova categorias.</p></div>
+              <div className="mt-3 flex gap-2"><input className="field min-w-0 py-2 text-sm" value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addCategory(); } }} placeholder="Nova categoria" aria-label="Nome da nova categoria" /><button type="button" onClick={addCategory} aria-label="Adicionar categoria" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-ink text-white transition-colors hover:bg-zinc-800"><Plus className="h-4 w-4" /></button></div>
+              <ul className="mt-3 divide-y divide-line rounded-lg border border-line bg-white">{currentCategories.map((category) => <li key={category} className="flex min-h-11 items-center gap-2 px-2.5 py-1.5">
+                {editingCategory === category ? <><input className="field min-w-0 flex-1 py-2 text-sm" value={categoryDraft} onChange={(event) => setCategoryDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); saveCategoryEdit(category); } if (event.key === 'Escape') { setEditingCategory(null); setCategoryError(''); } }} aria-label={`Novo nome para ${category}`} /><button type="button" onClick={() => saveCategoryEdit(category)} aria-label="Salvar nome da categoria" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-receita hover:bg-emerald-50"><Check className="h-4 w-4" /></button><button type="button" onClick={() => { setEditingCategory(null); setCategoryError(''); }} aria-label="Cancelar edição" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-mute hover:bg-paper"><X className="h-4 w-4" /></button></> : <><span className="min-w-0 flex-1 truncate text-sm">{category}</span>{categoryUsage[f.type]?.[category] > 0 && <span className="text-[10px] text-mute">Em uso</span>}<button type="button" onClick={() => { setEditingCategory(category); setCategoryDraft(category); setCategoryError(''); }} aria-label={`Renomear ${category}`} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-mute hover:bg-paper hover:text-ink"><PencilLine className="h-4 w-4" /></button><button type="button" onClick={() => removeCategory(category)} aria-label={`Remover ${category}`} title={categoryUsage[f.type]?.[category] ? 'Reclassifique os lançamentos que usam esta categoria para removê-la' : 'Remover categoria'} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-mute hover:bg-rose-50 hover:text-despesa"><Trash2 className="h-4 w-4" /></button></>}
+              </li>)}</ul>
+              {categoryError && <p className="mt-2 text-xs font-medium text-despesa" role="alert">{categoryError}</p>}
+            </section>}
+          </div>
           <div className="space-y-2.5 rounded-xl bg-paper/75 p-4">
             <label className="flex cursor-pointer items-center gap-3 text-sm"><input type="checkbox" checked={f.paid} onChange={(e) => set('paid', e.target.checked)} className="h-4 w-4 accent-[#594e90]" />{f.type === 'despesa' ? 'Já paguei' : 'Já recebi'}</label>
             <label className="flex cursor-pointer items-center gap-3 text-sm"><input type="checkbox" checked={f.fixed} onChange={(e) => set('fixed', e.target.checked)} className="h-4 w-4 accent-[#594e90]" />Lançamento fixo (repete todo mês)</label>

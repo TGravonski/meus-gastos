@@ -1,12 +1,13 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import TransactionForm from '../components/TransactionForm';
-import { brl, download, monthLabel, moveToMonth, shiftMonth, shortDate, todayISO, uid } from '../lib/utils';
+import AuthForm from '../components/AuthForm';
+import { supabase, supabaseConfigured } from '../lib/supabase';
+import { brl, CATS, download, monthLabel, moveToMonth, shiftMonth, shortDate, todayISO, uid } from '../lib/utils';
 import { ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, BriefcaseBusiness, CarFront, Check, CircleDollarSign, Clapperboard, Clock3, CreditCard, Download, FileDown, GraduationCap, HeartPulse, House, ListFilter, Mail, MessageCircle, PencilLine, PieChart, Plus, Repeat2, Search, ShoppingBasket, Trash2, TrendingUp, Upload, X } from 'lucide-react';
 
-const KEY = 'financas-v1';
 const FILTERS = [['todos', 'Todos'], ['despesa', 'Despesas'], ['receita', 'Receitas'], ['pendente', 'Pendentes']];
-const ACCENTS = ['#3016EB', '#2411BE', '#180B91', '#0C0663', '#000036', '#00002B', '#000020', '#000015', '#00000A'];
+const ACCENTS = ['#5887A3', '#477893', '#366984', '#245A74', '#134B64', '#10465E', '#0D4158', '#0A3C52', '#07374C'];
 const CATEGORY_ICONS = {
   Moradia: House, Mercado: ShoppingBasket, Transporte: CarFront, Saúde: HeartPulse,
   Lazer: Clapperboard, Educação: GraduationCap, Assinaturas: Repeat2, Cartão: CreditCard,
@@ -14,6 +15,14 @@ const CATEGORY_ICONS = {
 };
 const isValidTransaction = (t) => t && typeof t === 'object' && typeof t.description === 'string' && typeof t.category === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.date) && ['despesa', 'receita'].includes(t.type) && Number.isFinite(Number(t.amount)) && Number(t.amount) > 0;
 const normalizeTransactions = (items) => items.map((t) => ({ ...t, id: t.id || uid(), amount: Number(t.amount), paid: Boolean(t.paid), fixed: Boolean(t.fixed) }));
+const normalizeCategoryList = (items, fallback) => {
+  const normalized = Array.isArray(items) ? [...new Map(items.filter((item) => typeof item === 'string').map((item) => item.trim().replace(/\s+/g, ' ')).filter(Boolean).map((item) => [item.toLocaleLowerCase('pt-BR'), item])).values()] : [];
+  return normalized.length ? normalized : [...fallback];
+};
+const normalizeCategories = (stored) => ({
+  despesa: normalizeCategoryList(stored?.despesa, CATS.despesa),
+  receita: normalizeCategoryList(stored?.receita, CATS.receita),
+});
 
 function CategorySummary({ title, entries, total, chartType, onChartTypeChange }) {
   const pieGradient = entries.map(([, value], index, all) => {
@@ -49,7 +58,9 @@ function PrintCategoryChart({ title, entries, total }) {
 
 export default function Home() {
   const [txs, setTxs] = useState([]);
+  const [categories, setCategories] = useState(() => normalizeCategories(CATS));
   const [ready, setReady] = useState(false);
+  const [user, setUser] = useState(null);
   const [month, setMonth] = useState(todayISO().slice(0, 7));
   const [filter, setFilter] = useState('todos');
   const [query, setQuery] = useState('');
@@ -61,13 +72,46 @@ export default function Home() {
   const fileRef = useRef(null);
 
   useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(KEY) || '[]');
-      setTxs(Array.isArray(stored) ? normalizeTransactions(stored.filter(isValidTransaction)) : []);
-    } catch { setTxs([]); }
-    setReady(true);
+    if (!supabaseConfigured) return;
+    let active = true;
+    const loadUserData = async (authUser) => {
+      if (!active) return;
+      setReady(false);
+      setUser(authUser || null);
+      setTxs([]);
+      setCategories(normalizeCategories(CATS));
+      if (!authUser) { setReady(true); return; }
+      const [transactionsResult, categoriesResult] = await Promise.all([
+        supabase.from('transactions').select('*').order('date', { ascending: false }),
+        supabase.from('user_categories').select('categories').maybeSingle(),
+      ]);
+      if (!active) return;
+      if (transactionsResult.error || categoriesResult.error) {
+        setMsg(`Erro ao carregar dados: ${(transactionsResult.error || categoriesResult.error).message}`);
+      } else {
+        setTxs(normalizeTransactions((transactionsResult.data || []).filter(isValidTransaction)));
+        if (categoriesResult.data?.categories) setCategories(normalizeCategories(categoriesResult.data.categories));
+      }
+      setReady(true);
+    };
+    supabase.auth.getSession().then(({ data }) => loadUserData(data.session?.user));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setTimeout(() => loadUserData(session?.user), 0);
+    });
+    return () => { active = false; listener.subscription.unsubscribe(); };
   }, []);
-  useEffect(() => { if (ready) localStorage.setItem(KEY, JSON.stringify(txs)); }, [txs, ready]);
+  useEffect(() => {
+    if (!ready || !user) return;
+    const timer = setTimeout(async () => {
+      const rows = txs.map((t) => ({ ...t, user_id: user.id }));
+      const [txResult, catResult] = await Promise.all([
+        rows.length ? supabase.from('transactions').upsert(rows) : Promise.resolve({ error: null }),
+        supabase.from('user_categories').upsert({ user_id: user.id, categories, updated_at: new Date().toISOString() }),
+      ]);
+      if (txResult.error || catResult.error) setMsg(`Erro ao salvar: ${(txResult.error || catResult.error).message}`);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [txs, categories, ready, user]);
   useEffect(() => { if (msg) { const t = setTimeout(() => setMsg(''), 3000); return () => clearTimeout(t); } }, [msg]);
   useEffect(() => {
     if (!addMenuOpen) return;
@@ -82,6 +126,7 @@ export default function Home() {
   const despesasArr = monthTxs.filter((t) => t.type === 'despesa');
   const despesas = sum(despesasArr);
   const aPagar = sum(despesasArr.filter((t) => !t.paid));
+  const aReceber = sum(monthTxs.filter((t) => t.type === 'receita' && !t.paid));
   const saldo = receitas - despesas;
   const categorySummaries = useMemo(() => {
     const group = (type) => {
@@ -95,6 +140,12 @@ export default function Home() {
   }, [monthTxs]);
   const expenseTotal = categorySummaries.expenses.reduce((sum, [, value]) => sum + value, 0);
   const incomeTotal = categorySummaries.income.reduce((sum, [, value]) => sum + value, 0);
+  const categoryUsage = useMemo(() => txs.reduce((usage, transaction) => {
+    if (['despesa', 'receita'].includes(transaction.type) && transaction.category) {
+      usage[transaction.type][transaction.category] = (usage[transaction.type][transaction.category] || 0) + 1;
+    }
+    return usage;
+  }, { despesa: {}, receita: {} }), [txs]);
   const reportText = useMemo(() => [
     `Resumo financeiro — ${monthLabel(month)}`,
     `Saldo: ${brl(saldo)}`,
@@ -116,9 +167,16 @@ export default function Home() {
   }, [monthTxs, filter, query]);
 
   const save = (t) => { setTxs((p) => (t.id ? p.map((x) => (x.id === t.id ? t : x)) : [...p, { ...t, id: uid() }])); setEditing(null); };
+  const addCategory = (type, name) => setCategories((current) => ({ ...current, [type]: [...current[type], name] }));
+  const deleteCategory = (type, name) => setCategories((current) => ({ ...current, [type]: current[type].filter((item) => item !== name) }));
+  const renameCategory = (type, oldName, newName) => {
+    setCategories((current) => ({ ...current, [type]: current[type].map((item) => item === oldName ? newName : item) }));
+    setTxs((current) => current.map((transaction) => transaction.type === type && transaction.category === oldName ? { ...transaction, category: newName } : transaction));
+  };
   const remove = (id) => {
     if (!window.confirm('Excluir este lançamento? Esta ação não pode ser desfeita.')) return;
     setTxs((p) => p.filter((x) => x.id !== id));
+    if (user) supabase.from('transactions').delete().eq('id', id).then(({ error }) => { if (error) setMsg(`Erro ao excluir: ${error.message}`); });
     setEditing(null);
     setMsg('Lançamento excluído.');
   };
@@ -130,7 +188,7 @@ export default function Home() {
     setTxs((p) => [...p, ...novos]);
     setMsg(novos.length ? `${novos.length} lançamento(s) fixo(s) copiado(s).` : 'Nenhum lançamento fixo novo para copiar.');
   };
-  const exportJSON = () => download(`financas-${todayISO()}.json`, JSON.stringify(txs, null, 2), 'application/json');
+  const exportJSON = () => download(`financas-${todayISO()}.json`, JSON.stringify({ version: 2, transactions: txs, categories }, null, 2), 'application/json');
   const exportPDF = () => window.print();
   const shareWhatsApp = () => window.open(`https://wa.me/?text=${encodeURIComponent(reportText)}`, '_blank', 'noopener,noreferrer');
   const shareEmail = () => {
@@ -151,19 +209,23 @@ export default function Home() {
     }
     file.text().then((txt) => {
       try {
-        const data = JSON.parse(txt);
+        const backup = JSON.parse(txt);
+        const data = Array.isArray(backup) ? backup : backup?.transactions;
         const valid = Array.isArray(data) && data.every(isValidTransaction);
         if (!valid) throw new Error('invalid backup');
         setTxs(normalizeTransactions(data));
+        if (!Array.isArray(backup) && backup.categories) setCategories(normalizeCategories(backup.categories));
         setMsg('Backup importado.');
       } catch { setMsg('Este arquivo não parece ser um backup válido. Seus dados atuais foram mantidos.'); }
     }).catch(() => setMsg('Não foi possível ler o arquivo. Seus dados atuais foram mantidos.'));
     e.target.value = '';
   };
 
-  if (!ready) return null;
-  const blank = { type: 'despesa', description: '', amount: '', date: month === todayISO().slice(0, 7) ? todayISO() : `${month}-01`, category: 'Mercado', paid: true, fixed: false };
-  const blankIncome = { ...blank, type: 'receita', category: 'Salário' };
+  if (!supabaseConfigured) return <main className="flex min-h-screen items-center justify-center bg-paper px-4"><section className="panel max-w-lg p-6"><h1 className="text-xl font-semibold">Configure o Supabase</h1><p className="mt-2 text-sm text-mute">Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no arquivo .env.local e na Vercel.</p></section></main>;
+  if (!ready) return <main className="flex min-h-screen items-center justify-center bg-paper text-sm text-mute">Carregando sua conta…</main>;
+  if (!user) return <AuthForm />;
+  const blank = { type: 'despesa', description: '', amount: '', date: month === todayISO().slice(0, 7) ? todayISO() : `${month}-01`, category: categories.despesa[0] || CATS.despesa[0], paid: true, fixed: false };
+  const blankIncome = { ...blank, type: 'receita', category: categories.receita[0] || CATS.receita[0] };
   const [monthName, monthYear] = monthLabel(month).split(' de ');
 
   return (
@@ -173,6 +235,7 @@ export default function Home() {
           <img src="/logo-meus-gastos.png" alt="Meus gastos" className="h-11 w-24 object-contain sm:h-16 sm:w-36" />
         </div>
         <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3">
+          <button onClick={() => supabase.auth.signOut()} className="rounded-lg border border-line px-3 py-2 text-xs font-medium text-mute hover:bg-paper">Sair</button>
           <div className="flex shrink-0 items-center gap-1 rounded-xl border border-line bg-card p-1 sm:gap-2 sm:rounded-lg">
             <button onClick={() => setMonth(shiftMonth(month, -1))} className="flex h-9 w-9 items-center justify-center rounded-lg text-mute transition-colors hover:bg-paper hover:text-ink" aria-label="Mês anterior"><ArrowLeft className="h-4 w-4" /></button>
             <label className="relative flex w-[112px] flex-col items-center justify-center text-center sm:hidden"><span className="pointer-events-none text-xs font-semibold leading-4 capitalize">{monthName}</span><span className="pointer-events-none text-[10px] font-medium leading-3 text-mute">{monthYear}</span><input type="month" value={month} onChange={(event) => event.target.value && setMonth(event.target.value)} aria-label="Escolher mês" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" /></label>
@@ -183,20 +246,23 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4" aria-label="Resumo do mês">
-        <article className="relative isolate col-span-2 flex min-h-40 flex-col justify-between overflow-hidden rounded-xl border border-zinc-800 bg-[#09090B] p-5 text-white shadow-panel sm:min-h-44 sm:p-6 lg:col-span-1">
+      <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]" aria-label="Resumo do mês">
+        <article className="relative isolate col-span-2 flex min-h-40 flex-col justify-between overflow-hidden rounded-xl border border-zinc-800 bg-[#09090B] p-5 text-white shadow-panel sm:min-h-44 sm:p-6 lg:col-span-1 lg:min-h-[304px]">
           <svg className="pointer-events-none absolute inset-0 -z-10 h-full w-full opacity-20" viewBox="0 0 600 240" preserveAspectRatio="none" aria-hidden="true"><g fill="none" stroke="#A1A1AA" strokeWidth="1"><circle cx="510" cy="20" r="110" /><circle cx="510" cy="20" r="140" strokeOpacity=".55" /><path d="M0 190h160l34-34 28 28 56-56 34 34 54-54h72" strokeOpacity=".45" /><path d="M450 240v-36l26-26 24 24 44-44 56 56" strokeOpacity=".35" /></g></svg>
-          <div className="flex items-center justify-between gap-3"><p className="text-sm font-medium text-zinc-300">Saldo do mês</p><span className="rounded-md border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs font-medium text-zinc-300">{monthLabel(month)}</span></div>
-          <div><p className="num font-display text-4xl font-semibold tracking-tight text-white sm:text-5xl">{brl(saldo)}</p><p className="mt-2 text-xs text-zinc-400">{saldo < 0 ? 'Seu mês está no vermelho' : 'Seu mês está no azul'}</p></div>
+          <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3"><p className="text-xs font-medium text-zinc-300 sm:text-sm">Saldo do mês</p><span className="rounded-md border border-white/10 bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium text-zinc-300 sm:px-2.5 sm:py-1 sm:text-xs">{monthLabel(month)}</span></div>
+          <div className="min-w-0"><p className="num truncate whitespace-nowrap font-display text-[clamp(1rem,5vw,1.5rem)] font-semibold tracking-tight text-white sm:text-4xl lg:text-5xl">{brl(saldo)}</p><p className="mt-2 text-xs text-zinc-400">{saldo < 0 ? 'Seu mês está no vermelho' : 'Seu mês está no azul'}</p></div>
         </article>
+        <div className="col-span-2 grid grid-cols-2 gap-3 sm:gap-4 lg:col-span-1 lg:grid-cols-2">
         {[
           { label: 'Receitas', value: receitas, color: '#047857', Icon: ArrowUpRight },
           { label: 'Despesas', value: despesas, color: '#B45359', Icon: ArrowDownRight },
           { label: 'A pagar', value: aPagar, color: '#A16207', Icon: Clock3 },
-        ].map((item) => <article key={item.label} className={`panel flex min-h-28 items-center gap-3 p-4 sm:min-h-36 sm:gap-4 sm:p-6 ${item.label === 'A pagar' ? 'col-span-2 sm:col-span-1' : ''}`}>
+          { label: 'A receber', value: aReceber, color: '#047857', Icon: Clock3 },
+        ].map((item) => <article key={item.label} className={`panel flex min-h-28 items-center gap-3 p-4 sm:min-h-36 sm:gap-4 sm:p-6 ${['A pagar', 'A receber'].includes(item.label) ? 'col-span-1 sm:col-span-1 lg:col-span-1' : ''}`}>
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-paper sm:h-10 sm:w-10" style={{ color: item.color }} aria-hidden="true"><item.Icon className="h-[18px] w-[18px]" strokeWidth={1.8} /></span>
           <div className="min-w-0"><p className="text-xs text-mute sm:text-sm">{item.label}</p><p className="num mt-1 truncate text-base font-semibold tracking-tight sm:text-2xl" style={{ color: item.color }}>{brl(item.value)}</p></div>
         </article>)}
+        </div>
       </section>
       <div className="grid items-start gap-5">
         <section className="panel min-w-0 p-4 sm:p-6" aria-label="Lançamentos">
@@ -232,25 +298,24 @@ export default function Home() {
             <CategorySummary title="Receitas" entries={categorySummaries.income} total={incomeTotal} chartType={incomeChartType} onChartTypeChange={setIncomeChartType} />
           </div>
 
-          <section className="relative isolate overflow-hidden rounded-xl border border-zinc-800 bg-[#09090B] p-5 text-white shadow-panel sm:p-6" aria-label="Organização">
-            <svg className="pointer-events-none absolute inset-0 -z-10 h-full w-full opacity-15" viewBox="0 0 600 320" preserveAspectRatio="none" aria-hidden="true"><g fill="none" stroke="#A1A1AA" strokeWidth="1"><circle cx="560" cy="0" r="120" /><circle cx="560" cy="0" r="150" strokeOpacity=".5" /><path d="M0 285h160l30-30 28 28 48-48 34 34 50-50h70" strokeOpacity=".4" /></g></svg>
-            <div className="relative">
-              <p className="text-xs font-medium tracking-wide text-zinc-400">Organização</p><h2 className="mt-1 font-display text-lg font-semibold tracking-tight">Exportar e compartilhar</h2>
+          <section className="panel p-5 sm:p-6" aria-label="Organização">
+            <div>
+              <p className="eyebrow">Organização</p><h2 className="mt-1 font-display text-lg font-semibold tracking-tight">Exportar e compartilhar</h2>
               <div className="mt-4 space-y-2">
-                <button onClick={exportPDF} className="flex min-h-14 w-full items-center gap-3 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-left transition-colors hover:bg-white/[0.08]"><span className="flex h-9 w-9 items-center justify-center rounded-md bg-white/[0.08] text-white"><FileDown className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium">Baixar PDF</span><span className="mt-0.5 block text-xs text-zinc-400">Resumo, gráficos e lançamentos</span></span><ArrowRight className="h-4 w-4 text-zinc-500" /></button>
-                <button onClick={shareWhatsApp} className="flex min-h-14 w-full items-center gap-3 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-left transition-colors hover:bg-white/[0.08]"><span className="flex h-9 w-9 items-center justify-center rounded-md bg-white/[0.08] text-zinc-200"><MessageCircle className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium">Via WhatsApp</span><span className="mt-0.5 block text-xs text-zinc-400">Compartilhar resumo do mês</span></span><ArrowRight className="h-4 w-4 text-zinc-500" /></button>
-                <button onClick={shareEmail} className="flex min-h-14 w-full items-center gap-3 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-left transition-colors hover:bg-white/[0.08]"><span className="flex h-9 w-9 items-center justify-center rounded-md bg-white/[0.08] text-zinc-200"><Mail className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium">Via e-mail</span><span className="mt-0.5 block text-xs text-zinc-400">Abrir mensagem com o resumo</span></span><ArrowRight className="h-4 w-4 text-zinc-500" /></button>
+                <button onClick={exportPDF} className="flex min-h-14 w-full items-center gap-3 rounded-lg border border-line bg-white px-3.5 py-2.5 text-left transition-colors hover:bg-paper"><span className="flex h-9 w-9 items-center justify-center rounded-md bg-paper text-ink"><FileDown className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium text-ink">Baixar PDF</span><span className="mt-0.5 block text-xs text-mute">Resumo, gráficos e lançamentos</span></span><ArrowRight className="h-4 w-4 text-mute" /></button>
+                <button onClick={shareWhatsApp} className="flex min-h-14 w-full items-center gap-3 rounded-lg border border-line bg-white px-3.5 py-2.5 text-left transition-colors hover:bg-paper"><span className="flex h-9 w-9 items-center justify-center rounded-md bg-paper text-ink"><MessageCircle className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium text-ink">Via WhatsApp</span><span className="mt-0.5 block text-xs text-mute">Compartilhar resumo do mês</span></span><ArrowRight className="h-4 w-4 text-mute" /></button>
+                <button onClick={shareEmail} className="flex min-h-14 w-full items-center gap-3 rounded-lg border border-line bg-white px-3.5 py-2.5 text-left transition-colors hover:bg-paper"><span className="flex h-9 w-9 items-center justify-center rounded-md bg-paper text-ink"><Mail className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium text-ink">Via e-mail</span><span className="mt-0.5 block text-xs text-mute">Abrir mensagem com o resumo</span></span><ArrowRight className="h-4 w-4 text-mute" /></button>
               </div>
-              <div className="my-4 border-t border-white/10" />
-              <p className="text-xs font-medium text-zinc-400">Outras opções</p>
+              <div className="my-4 border-t border-line" />
+              <p className="text-xs font-medium text-mute">Outras opções</p>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <button onClick={copyFixed} className="flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-white/[0.06]"><Repeat2 className="h-4 w-4 text-zinc-400" aria-hidden="true" /> Copiar fixos</button>
-                <button onClick={exportCSV} className="flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-white/[0.06]"><Download className="h-4 w-4 text-zinc-400" aria-hidden="true" /> Exportar CSV</button>
-                <button onClick={exportJSON} className="flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-white/[0.06]"><Download className="h-4 w-4 text-zinc-400" aria-hidden="true" /> Backup</button>
-                <button onClick={() => fileRef.current?.click()} className="flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-white/[0.06]"><Upload className="h-4 w-4 text-zinc-400" aria-hidden="true" /> Importar</button>
+                <button onClick={copyFixed} className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line px-3 py-2 text-xs font-medium text-ink transition-colors hover:bg-paper"><Repeat2 className="h-4 w-4 text-mute" aria-hidden="true" /> Copiar fixos</button>
+                <button onClick={exportCSV} className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line px-3 py-2 text-xs font-medium text-ink transition-colors hover:bg-paper"><Download className="h-4 w-4 text-mute" aria-hidden="true" /> Exportar CSV</button>
+                <button onClick={exportJSON} className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line px-3 py-2 text-xs font-medium text-ink transition-colors hover:bg-paper"><Download className="h-4 w-4 text-mute" aria-hidden="true" /> Backup</button>
+                <button onClick={() => fileRef.current?.click()} className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line px-3 py-2 text-xs font-medium text-ink transition-colors hover:bg-paper"><Upload className="h-4 w-4 text-mute" aria-hidden="true" /> Importar</button>
                 <input ref={fileRef} type="file" accept="application/json" onChange={importJSON} className="hidden" />
               </div>
-              {msg && <p className="mt-3 rounded-lg bg-white/[0.08] px-3 py-2 text-xs font-medium text-zinc-200" role="status">{msg}</p>}
+              {msg && <p className="mt-3 rounded-lg bg-paper px-3 py-2 text-xs font-medium text-mute" role="status">{msg}</p>}
             </div>
           </section>
         </aside>
@@ -267,7 +332,7 @@ export default function Home() {
         </div>}
         <button onClick={() => setAddMenuOpen((open) => !open)} aria-label={addMenuOpen ? 'Fechar opções de lançamento' : 'Adicionar lançamento'} aria-expanded={addMenuOpen} aria-haspopup="menu" className="ml-auto flex h-14 w-14 items-center justify-center rounded-xl bg-ink text-white shadow-panel transition-colors hover:bg-zinc-800"><Plus className={`h-6 w-6 transition-transform ${addMenuOpen ? 'rotate-45' : ''}`} /></button>
       </div>
-      {editing && <TransactionForm initial={editing} onSave={save} onDelete={remove} onClose={() => setEditing(null)} />}
+      {editing && <TransactionForm initial={editing} categories={categories} categoryUsage={categoryUsage} onAddCategory={addCategory} onDeleteCategory={deleteCategory} onRenameCategory={renameCategory} onSave={save} onDelete={remove} onClose={() => setEditing(null)} />}
       <section id="print-report" className="hidden" aria-label="Relatório financeiro para impressão">
         <div className="report-page">
           <header className="report-header"><img src="/logo-meus-gastos.png" alt="Meus Gastos" /><div><p>Controle financeiro pessoal</p><strong>{monthLabel(month)}</strong></div></header>
