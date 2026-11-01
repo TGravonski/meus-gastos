@@ -1,6 +1,6 @@
 ﻿import './globals.css';
 
-export const metadata = { title: 'Clareza — Controle financeiro', description: 'Controle financeiro pessoal com clareza e simplicidade.' };
+export const metadata = { title: 'Meus Gastos', description: 'Controle financeiro pessoal com clareza e simplicidade.' };
 export const viewport = { width: 'device-width', initialScale: 1 };
 
 export default function RootLayout({ children }) {

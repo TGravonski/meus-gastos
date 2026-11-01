@@ -230,19 +230,19 @@ export default function Home() {
 
   return (
     <main className="mx-auto max-w-7xl px-4 pb-28 pt-5 sm:px-7 sm:pt-8 lg:px-10">
-      <header className="mb-6 flex items-center justify-between gap-3 sm:mb-7 sm:gap-4">
-        <div className="flex min-h-12 shrink-0 items-center justify-start pl-1 sm:pl-0">
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 sm:mb-7 sm:flex-nowrap sm:gap-4">
+        <div className="order-1 flex min-h-12 min-w-0 shrink items-center justify-start pl-1 sm:order-1 sm:shrink-0 sm:pl-0">
           <img src="/logo-meus-gastos.png" alt="Meus gastos" className="h-11 w-24 object-contain sm:h-16 sm:w-36" />
         </div>
-        <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3">
-          <div className="flex shrink-0 items-center gap-1 rounded-xl border border-line bg-card p-1 sm:gap-2 sm:rounded-lg">
-            <button onClick={() => setMonth(shiftMonth(month, -1))} className="flex h-9 w-9 items-center justify-center rounded-lg text-mute transition-colors hover:bg-paper hover:text-ink" aria-label="Mês anterior"><ArrowLeft className="h-4 w-4" /></button>
-            <label className="relative flex w-[88px] flex-col items-center justify-center text-center sm:hidden"><span className="pointer-events-none text-xs font-semibold leading-4 capitalize">{monthName}</span><span className="pointer-events-none text-[10px] font-medium leading-3 text-mute">{monthYear}</span><input type="month" value={month} onChange={(event) => event.target.value && setMonth(event.target.value)} aria-label="Escolher mês" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" /></label>
+        <button type="button" onClick={() => supabase.auth.signOut()} aria-label="Sair da conta" title="Sair" className="order-2 ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-black transition-colors hover:bg-black/5 sm:order-3"><LogOut className="h-5 w-5" aria-hidden="true" /></button>
+        <div className="order-3 flex min-w-0 basis-full items-center justify-end gap-1.5 sm:order-2 sm:ml-auto sm:basis-auto sm:gap-3">
+          <div className="flex min-w-0 shrink items-center gap-0.5 rounded-xl border border-line bg-card p-1 sm:shrink-0 sm:gap-2 sm:rounded-lg">
+            <button onClick={() => setMonth(shiftMonth(month, -1))} className="flex h-9 w-8 shrink-0 items-center justify-center rounded-lg text-mute transition-colors hover:bg-paper hover:text-ink sm:w-9" aria-label="Mês anterior"><ArrowLeft className="h-4 w-4" /></button>
+            <label className="relative flex min-w-0 flex-1 flex-col items-center justify-center px-1 text-center sm:hidden"><span className="pointer-events-none max-w-full truncate text-xs font-semibold leading-4 capitalize">{monthName}</span><span className="pointer-events-none text-[10px] font-medium leading-3 text-mute">{monthYear}</span><input type="month" value={month} onChange={(event) => event.target.value && setMonth(event.target.value)} aria-label="Escolher mês" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" /></label>
             <h1 className="hidden min-w-40 px-2 text-center text-sm font-semibold capitalize sm:block">{monthLabel(month)}</h1>
-            <button onClick={() => setMonth(shiftMonth(month, 1))} className="flex h-9 w-9 items-center justify-center rounded-lg text-mute transition-colors hover:bg-paper hover:text-ink" aria-label="Próximo mês"><ArrowRight className="h-4 w-4" /></button>
+            <button onClick={() => setMonth(shiftMonth(month, 1))} className="flex h-9 w-8 shrink-0 items-center justify-center rounded-lg text-mute transition-colors hover:bg-paper hover:text-ink sm:w-9" aria-label="Próximo mês"><ArrowRight className="h-4 w-4" /></button>
           </div>
           <button onClick={() => setEditing(blank)} className="hidden items-center gap-2 rounded-lg bg-ink px-4 py-3 text-sm font-medium text-white hover:bg-zinc-800 sm:flex"><Plus className="h-4 w-4" /> Novo lançamento</button>
-          <button type="button" onClick={() => supabase.auth.signOut()} aria-label="Sair da conta" title="Sair" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-black transition-colors hover:bg-black/5"><LogOut className="h-5 w-5" aria-hidden="true" /></button>
         </div>
       </header>
 
