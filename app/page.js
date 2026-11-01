@@ -4,7 +4,7 @@ import TransactionForm from '../components/TransactionForm';
 import AuthForm from '../components/AuthForm';
 import { supabase, supabaseConfigured } from '../lib/supabase';
 import { brl, CATS, download, monthLabel, moveToMonth, shiftMonth, shortDate, todayISO, uid } from '../lib/utils';
-import { ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, BriefcaseBusiness, CarFront, Check, CircleDollarSign, Clapperboard, Clock3, CreditCard, Download, FileDown, GraduationCap, HeartPulse, House, ListFilter, Mail, MessageCircle, PencilLine, PieChart, Plus, Repeat2, Search, ShoppingBasket, Trash2, TrendingUp, Upload, X } from 'lucide-react';
+import { ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, BriefcaseBusiness, CarFront, Check, CircleDollarSign, Clapperboard, Clock3, CreditCard, Download, FileDown, GraduationCap, HeartPulse, House, ListFilter, LogOut, Mail, MessageCircle, PencilLine, PieChart, Plus, Repeat2, Search, ShoppingBasket, Trash2, TrendingUp, Upload, X } from 'lucide-react';
 
 const FILTERS = [['todos', 'Todos'], ['despesa', 'Despesas'], ['receita', 'Receitas'], ['pendente', 'Pendentes']];
 const ACCENTS = ['#5887A3', '#477893', '#366984', '#245A74', '#134B64', '#10465E', '#0D4158', '#0A3C52', '#07374C'];
@@ -235,14 +235,14 @@ export default function Home() {
           <img src="/logo-meus-gastos.png" alt="Meus gastos" className="h-11 w-24 object-contain sm:h-16 sm:w-36" />
         </div>
         <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3">
-          <button onClick={() => supabase.auth.signOut()} className="rounded-lg border border-line px-3 py-2 text-xs font-medium text-mute hover:bg-paper">Sair</button>
           <div className="flex shrink-0 items-center gap-1 rounded-xl border border-line bg-card p-1 sm:gap-2 sm:rounded-lg">
             <button onClick={() => setMonth(shiftMonth(month, -1))} className="flex h-9 w-9 items-center justify-center rounded-lg text-mute transition-colors hover:bg-paper hover:text-ink" aria-label="Mês anterior"><ArrowLeft className="h-4 w-4" /></button>
-            <label className="relative flex w-[112px] flex-col items-center justify-center text-center sm:hidden"><span className="pointer-events-none text-xs font-semibold leading-4 capitalize">{monthName}</span><span className="pointer-events-none text-[10px] font-medium leading-3 text-mute">{monthYear}</span><input type="month" value={month} onChange={(event) => event.target.value && setMonth(event.target.value)} aria-label="Escolher mês" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" /></label>
+            <label className="relative flex w-[88px] flex-col items-center justify-center text-center sm:hidden"><span className="pointer-events-none text-xs font-semibold leading-4 capitalize">{monthName}</span><span className="pointer-events-none text-[10px] font-medium leading-3 text-mute">{monthYear}</span><input type="month" value={month} onChange={(event) => event.target.value && setMonth(event.target.value)} aria-label="Escolher mês" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" /></label>
             <h1 className="hidden min-w-40 px-2 text-center text-sm font-semibold capitalize sm:block">{monthLabel(month)}</h1>
             <button onClick={() => setMonth(shiftMonth(month, 1))} className="flex h-9 w-9 items-center justify-center rounded-lg text-mute transition-colors hover:bg-paper hover:text-ink" aria-label="Próximo mês"><ArrowRight className="h-4 w-4" /></button>
           </div>
           <button onClick={() => setEditing(blank)} className="hidden items-center gap-2 rounded-lg bg-ink px-4 py-3 text-sm font-medium text-white hover:bg-zinc-800 sm:flex"><Plus className="h-4 w-4" /> Novo lançamento</button>
+          <button type="button" onClick={() => supabase.auth.signOut()} aria-label="Sair da conta" title="Sair" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-black transition-colors hover:bg-black/5"><LogOut className="h-5 w-5" aria-hidden="true" /></button>
         </div>
       </header>
 
